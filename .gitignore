@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# Environment variables
+.env
+*.env
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+sefs-project/backend/backend.log
+sefs-project/frontend/sefs-ui/frontend.log
+
+# Node modules
+node_modules/
+sefs-project/frontend/sefs-ui/node_modules/
+
+# Build files
+sefs-project/frontend/sefs-ui/build/
+
+# SEFS runtime data
+sefs-project/sefs_root/
+!sefs-project/sefs_root/.gitkeep
+
+# State files
+.sefs_state.json
+.sefs_history.json
+
+# Package locks (optional - remove if you want to include them)
+package-lock.json
+
+# Test files
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
