@@ -24,6 +24,7 @@ class StateManager:
         self.history_file = self.root / '.sefs_history.json'
         self.state = self._load_state()
         self.history = self._load_history()
+        self._migrate_legacy_state()
         logger.info("State manager initialized")
     
     def _load_state(self):
@@ -75,14 +76,45 @@ class StateManager:
         except Exception as e:
             logger.error(f"Error saving history: {e}")
     
-    def update_file(self, file_path, cluster_id, content_preview):
+    def update_file(self, file_path, cluster_id, content_preview, current_path=None):
         """Update file information"""
         self.state['files'][file_path] = {
             'cluster': cluster_id,
             'preview': content_preview,
-            'updated': datetime.now().isoformat()
+            'updated': datetime.now().isoformat(),
+            'current_path': current_path or file_path
         }
         self.save_state()
+    
+    def update_file_location(self, original_path, new_path):
+        """Update the physical location of a file"""
+        if original_path in self.state['files']:
+            self.state['files'][original_path]['current_path'] = new_path
+            self.save_state()
+            logger.info(f"Updated file location: {Path(original_path).name} -> {new_path}")
+    
+    def resolve_current_path(self, file_identifier):
+        """Resolve the current physical path for a file"""
+        if file_identifier in self.state['files']:
+            file_data = self.state['files'][file_identifier]
+            current_path = file_data.get('current_path', file_identifier)
+            
+            # Verify file exists at current path
+            if Path(current_path).exists():
+                return current_path
+            
+            # Fallback: check if file exists at original identifier
+            if Path(file_identifier).exists():
+                return file_identifier
+        
+        # Try to find file by name in semantic folders
+        file_name = Path(file_identifier).name
+        for root_file in Path(self.root).rglob(file_name):
+            if root_file.is_file():
+                logger.info(f"Found file by search: {root_file}")
+                return str(root_file)
+        
+        return None
     
     def update_cluster(self, cluster_id, folder_name, file_count):
         """Update cluster information"""
@@ -110,3 +142,37 @@ class StateManager:
     def get_history(self):
         """Get clustering history"""
         return self.history
+    
+    def _migrate_legacy_state(self):
+        """Migrate old state format to include current_path field"""
+        migrated = False
+        
+        for file_path, file_data in self.state['files'].items():
+            if 'current_path' not in file_data:
+                # Try to find the file's current location
+                original_path = Path(file_path)
+                file_name = original_path.name
+                
+                # Check if file exists at original location
+                if original_path.exists():
+                    file_data['current_path'] = file_path
+                    migrated = True
+                else:
+                    # Search for file in semantic folders
+                    found = False
+                    for found_file in self.root.rglob(file_name):
+                        if found_file.is_file():
+                            file_data['current_path'] = str(found_file)
+                            migrated = True
+                            found = True
+                            logger.info(f"Migrated path for {file_name}: {found_file}")
+                            break
+                    
+                    if not found:
+                        # File not found, use original path as fallback
+                        file_data['current_path'] = file_path
+                        migrated = True
+        
+        if migrated:
+            self.save_state()
+            logger.info("State migration completed")

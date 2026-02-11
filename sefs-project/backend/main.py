@@ -167,7 +167,7 @@ def get_folders():
 
 @app.get("/graph")
 def get_graph_data():
-    """Get data for graph visualization"""
+    """Get data for graph visualization with metadata"""
     if not coordinator:
         return JSONResponse(
             status_code=503,
@@ -176,19 +176,66 @@ def get_graph_data():
     
     state = coordinator.get_current_state()
     
-    # Build nodes
+    # Build nodes with metadata
     nodes = []
     cluster_assignments = coordinator.semantic_engine.cluster_assignments
     
     for file_path in state['files']:
+        # Determine cluster - either from assignments or from folder name
         cluster_id = cluster_assignments.get(file_path, -1)
-        cluster_name = state['cluster_names'].get(cluster_id, "Uncategorized")
+        
+        # If not in assignments, try to determine from folder
+        if cluster_id == -1:
+            file_path_obj = Path(file_path)
+            parent_folder = file_path_obj.parent.name
+            
+            # Try to match folder name to cluster names
+            cluster_name = parent_folder if parent_folder != "sefs_root" else "Uncategorized"
+            
+            # Find cluster ID by name
+            for cid, cname in state['cluster_names'].items():
+                if cname == parent_folder:
+                    cluster_id = cid
+                    break
+        else:
+            cluster_name = state['cluster_names'].get(cluster_id, "Uncategorized")
+        
+        # If still no cluster name, use folder name
+        if cluster_id == -1:
+            file_path_obj = Path(file_path)
+            parent_folder = file_path_obj.parent.name
+            cluster_name = parent_folder if parent_folder != "sefs_root" else "Uncategorized"
+        
+        # Get file metadata
+        try:
+            file_stat = Path(file_path).stat()
+            file_size = file_stat.st_size
+            modified_time = file_stat.st_mtime
+            
+            # Format size
+            if file_size < 1024:
+                size_str = f"{file_size} B"
+            elif file_size < 1024 * 1024:
+                size_str = f"{file_size / 1024:.1f} KB"
+            else:
+                size_str = f"{file_size / (1024 * 1024):.1f} MB"
+            
+            # Format date
+            from datetime import datetime
+            date_str = datetime.fromtimestamp(modified_time).strftime("%Y-%m-%d %H:%M:%S")
+            
+        except Exception as e:
+            size_str = "Unknown"
+            date_str = "Unknown"
         
         nodes.append({
             "id": file_path,
             "label": Path(file_path).name,
             "cluster": cluster_id,
             "clusterName": cluster_name,
+            "size": size_str,
+            "modified": date_str,
+            "path": file_path,
             "x": 0,
             "y": 0
         })
@@ -258,6 +305,91 @@ async def generate_names(background_tasks: BackgroundTasks):
         "message": "Names are generated automatically during reorganization",
         "cluster_names": coordinator.cluster_names
     }
+
+
+@app.get("/open-file/{file_path:path}")
+def open_file(file_path: str):
+    """Open a file in the default system application"""
+    import os
+    import subprocess
+    import platform
+    
+    try:
+        if not coordinator:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "System not initialized"}
+            )
+        
+        # Resolve current path from state
+        current_path = coordinator.state_manager.resolve_current_path(file_path)
+        
+        if not current_path:
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"File not found: {Path(file_path).name}"}
+            )
+        
+        full_path = Path(current_path)
+        
+        # Security check - ensure file is within sefs_root
+        root_path = Path(ROOT_DIR).resolve()
+        try:
+            full_path_resolved = full_path.resolve()
+            if not str(full_path_resolved).startswith(str(root_path)):
+                return JSONResponse(
+                    status_code=403,
+                    content={"error": "Access denied: file outside root directory"}
+                )
+        except Exception:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "File not found"}
+            )
+        
+        # Verify file exists
+        if not full_path.exists():
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"File not found: {full_path.name}"}
+            )
+        
+        # Open file with default application
+        system = platform.system()
+        if system == "Windows":
+            os.startfile(str(full_path))
+        elif system == "Darwin":  # macOS
+            subprocess.run(["open", str(full_path)])
+        else:  # Linux
+            subprocess.run(["xdg-open", str(full_path)])
+        
+        return {"status": "success", "message": f"Opened {full_path.name}"}
+    
+    except Exception as e:
+        logger.error(f"Error opening file: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to open file: {str(e)}"}
+        )
+
+
+@app.get("/logs")
+def get_logs():
+    """Get recent system logs"""
+    try:
+        log_file = Path(__file__).parent / "backend.log"
+        if log_file.exists():
+            # Read last 100 lines
+            with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()
+                recent_logs = lines[-100:] if len(lines) > 100 else lines
+                return {"logs": "".join(recent_logs)}
+        return {"logs": "No logs available"}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to read logs: {str(e)}"}
+        )
 
 
 # WebSocket endpoint for real-time updates

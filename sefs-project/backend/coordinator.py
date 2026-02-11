@@ -81,18 +81,22 @@ class SEFSCoordinator:
         # Generate cluster names (simplified for now)
         self._generate_cluster_names(cluster_assignments)
         
-        # Sync with OS
-        self.os_manager.sync_clusters(
+        # Sync with OS - returns dict of moved files
+        moved_files = self.os_manager.sync_clusters(
             cluster_assignments,
             self.cluster_names
         )
         
-        # Update state
+        # Update state with new file locations
         for file_path, cluster_id in cluster_assignments.items():
+            # Get the new path if file was moved
+            current_path = moved_files.get(file_path, file_path)
+            
             self.state_manager.update_file(
                 file_path,
                 cluster_id,
-                self.semantic_engine.file_contents.get(file_path, "")
+                self.semantic_engine.file_contents.get(file_path, ""),
+                current_path=current_path
             )
         
         # Add to history
@@ -139,9 +143,22 @@ class SEFSCoordinator:
         return True
     
     def get_current_state(self):
-        """Get current system state"""
+        """Get current system state - includes all files (root and organized)"""
+        import glob
+        
+        # Get files from semantic engine (currently being processed)
+        processing_files = list(self.semantic_engine.file_embeddings.keys())
+        
+        # Also get all files in organized folders
+        all_files = []
+        for pattern in ['**/*.txt', '**/*.pdf']:
+            all_files.extend(glob.glob(str(self.root / pattern), recursive=True))
+        
+        # Combine and deduplicate
+        all_file_paths = list(set(processing_files + all_files))
+        
         return {
-            'files': list(self.semantic_engine.file_embeddings.keys()),
+            'files': all_file_paths,
             'clusters': self.semantic_engine.get_cluster_stats(),
             'folders': self.os_manager.get_folder_structure(),
             'cluster_names': self.cluster_names

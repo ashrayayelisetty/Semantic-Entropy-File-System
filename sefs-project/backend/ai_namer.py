@@ -188,7 +188,8 @@ class AIClusterNamer:
         cluster_assignments: Dict[str, int],
         file_contents: Dict[str, str]
     ) -> Dict[int, str]:
-        """Fallback to keyword-based naming"""
+        """Fallback to TF-IDF based naming"""
+        from sklearn.feature_extraction.text import TfidfVectorizer
         from collections import Counter
         import re
         
@@ -206,7 +207,38 @@ class AIClusterNamer:
                 cluster_names[cluster_id] = "Uncategorized"
                 continue
             
-            # Extract keywords from filenames
+            # Get content for this cluster
+            texts = []
+            for file_path in files:
+                content = file_contents.get(file_path, "")
+                if content:
+                    texts.append(content)
+            
+            # Try TF-IDF if we have content
+            if texts and len(texts) > 0:
+                try:
+                    # Use TF-IDF to extract important keywords
+                    vectorizer = TfidfVectorizer(
+                        max_features=3,
+                        stop_words='english',
+                        ngram_range=(1, 1),
+                        min_df=1
+                    )
+                    vectorizer.fit_transform(texts)
+                    
+                    # Get top keywords
+                    keywords = vectorizer.get_feature_names_out()
+                    
+                    if len(keywords) > 0:
+                        # Format as folder name
+                        name = "_".join([k.capitalize() for k in keywords])
+                        cluster_names[cluster_id] = name
+                        logger.info(f"TF-IDF generated name for cluster {cluster_id}: {name}")
+                        continue
+                except Exception as e:
+                    logger.warning(f"TF-IDF naming failed for cluster {cluster_id}: {e}")
+            
+            # Fallback to filename-based naming if TF-IDF fails
             words = []
             for file_path in files:
                 name = Path(file_path).stem
