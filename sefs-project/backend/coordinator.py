@@ -154,13 +154,16 @@ class SEFSCoordinator:
                 self._process_file(file_path)
             elif event_type == 'deleted':
                 self.semantic_engine.remove_file(file_path)
+            elif event_type == 'directory_deleted':
+                # Remove all files that were inside this directory
+                self.semantic_engine.remove_directory(file_path)
         
         # Notify about new files via callback
         if new_files and self.pending_callback:
             self.pending_callback(new_files)
         
         # Only reorganize if we processed modifications or deletions
-        if any(e[0] in ['modified', 'deleted'] for e in events):
+        if any(e[0] in ['modified', 'deleted', 'directory_deleted'] for e in events):
             self._reorganize()
             return True
         
@@ -181,8 +184,18 @@ class SEFSCoordinator:
         # Combine and deduplicate
         all_file_paths = list(set(processing_files + all_files))
         
+        # Filter out files that no longer exist (sanity check)
+        existing_files = [f for f in all_file_paths if Path(f).exists()]
+        
+        # If any files were removed by the existence check, we should cleanup the state
+        if len(existing_files) < len(all_file_paths):
+            deleted_files = set(all_file_paths) - set(existing_files)
+            for df in deleted_files:
+                self.semantic_engine.remove_file(df)
+            logger.info(f"Pruned {len(deleted_files)} non-existent files from state")
+        
         return {
-            'files': all_file_paths,
+            'files': existing_files,
             'clusters': self.semantic_engine.get_cluster_stats(),
             'folders': self.os_manager.get_folder_structure(),
             'cluster_names': self.cluster_names

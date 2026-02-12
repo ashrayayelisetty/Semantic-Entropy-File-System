@@ -33,7 +33,10 @@ class SEFSEventHandler(FileSystemEventHandler):
             logger.info(f"[MONITOR] File modified: {event.src_path}")
     
     def on_deleted(self, event):
-        if not event.is_directory and self._is_supported_file(event.src_path):
+        if event.is_directory:
+            self.queue.put(('directory_deleted', event.src_path))
+            logger.info(f"[MONITOR] Directory deleted: {event.src_path}")
+        elif self._is_supported_file(event.src_path):
             self.queue.put(('deleted', event.src_path))
             logger.info(f"[MONITOR] File deleted: {event.src_path}")
 

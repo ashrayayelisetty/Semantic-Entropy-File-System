@@ -51,6 +51,22 @@ class SemanticEngine:
         self.file_contents.pop(file_path, None)
         self.cluster_assignments.pop(file_path, None)
         logger.info(f"Removed file from index: {Path(file_path).name}")
+
+    def remove_directory(self, dir_path):
+        """Remove all files under a directory from the index"""
+        dir_str = str(dir_path).rstrip('\\/') + Path(dir_path).anchor[-1] # Ensure trailing slash for prefix match
+        # Fallback to simple check if anchor trick fails
+        if not dir_str.endswith(('\\', '/')):
+            dir_str += '\\' if '\\' in dir_str else '/'
+            
+        all_paths = list(self.file_embeddings.keys())
+        removed_count = 0
+        for fp in all_paths:
+            if fp.startswith(dir_str):
+                self.remove_file(fp)
+                removed_count += 1
+        if removed_count > 0:
+            logger.info(f"Removed {removed_count} files from index due to directory deletion: {dir_path}")
     
     def cluster_files(self, eps=0.5, min_samples=2):
         """Cluster files using DBSCAN
