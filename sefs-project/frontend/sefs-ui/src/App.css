@@ -314,149 +314,77 @@
   flex-shrink: 0;
 }
 
-/* -------- Cluster Box View -------- */
-.cluster-box-view {
+/* -------- Node Graph View -------- */
+.node-view {
   width: 100%;
   height: 100%;
-  overflow: auto;
-  padding: 24px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  align-content: flex-start;
-  perspective: 1200px;
-}
-
-.cluster-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 0;
   overflow: hidden;
-  flex: 1 1 320px;
-  min-width: 280px;
-  max-width: 500px;
-  transition: all var(--transition);
-  transform-style: preserve-3d;
   position: relative;
+  cursor: default;
 }
 
-.cluster-card::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: var(--radius-lg);
-  padding: 1px;
-  background: linear-gradient(135deg, var(--border-accent), transparent 40%, transparent 60%, rgba(0, 180, 216, 0.2));
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
+.node-view-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Cluster center label */
+.cluster-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
   pointer-events: none;
-  opacity: 0;
-  transition: opacity var(--transition);
 }
 
-.cluster-card:hover {
-  transform: translateY(-6px) rotateX(2deg) rotateY(-1deg);
-  box-shadow: var(--shadow-lg), var(--shadow-glow);
-  border-color: var(--border-accent);
-  background: var(--bg-surface-hover);
+.cluster-count {
+  font-size: 14px;
+  font-weight: 800;
+  pointer-events: none;
 }
 
-.cluster-card:hover::before {
-  opacity: 1;
+/* Pulse animation on cluster center ring */
+.pulse-ring {
+  animation: pulseRing 3s ease-in-out infinite;
 }
 
-.cluster-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--border);
+@keyframes pulseRing {
+
+  0%,
+  100% {
+    r: 38;
+    opacity: 0.7;
+  }
+
+  50% {
+    r: 44;
+    opacity: 0.4;
+  }
 }
 
-.cluster-card-name {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
-}
-
-.cluster-card-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 28px;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: 14px;
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
-  margin-left: 12px;
-  color: #fff;
-}
-
-.cluster-card-files {
-  padding: 16px 20px 20px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  min-height: 60px;
-}
-
-.file-chip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+/* File node group */
+.file-node-g {
   cursor: pointer;
-  transition: all var(--transition);
-  transform-style: preserve-3d;
-  max-width: 100%;
+  transition: transform 0.2s ease;
 }
 
-.file-chip:hover {
-  background: var(--bg-surface-hover);
-  border-color: var(--border-accent);
-  transform: translateY(-3px) translateZ(8px);
-  box-shadow: var(--shadow-md), 0 0 16px var(--accent-dim);
+.file-node-circle {
+  transition: all 0.2s ease;
 }
 
-.file-chip:active {
-  transform: translateY(-1px) translateZ(4px);
+.file-node-g:hover .file-node-circle {
+  r: 22;
+  stroke-width: 3;
+  fill: rgba(13, 17, 23, 1);
 }
 
-.file-chip-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.file-chip-name {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 140px;
-}
-
-/* cluster color accent dot */
-.cluster-color-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  box-shadow: 0 0 8px currentColor;
+/* File name label below node */
+.file-label {
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: none;
+  opacity: 0.8;
 }
 
 /* -------- Loading & Empty -------- */
