@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import GravityView from './GravityView';
+import ClusterBoxView from './ClusterBoxView';
+import FileUpload from './FileUpload';
 import ActivityFeed from './ActivityFeed';
 import './App.css';
 
@@ -57,6 +58,98 @@ function App() {
     }
   };
 
+  const handleUploadSuccess = (filenames) => {
+    const newActivity = {
+      id: Date.now(),
+      icon: '📤',
+      message: `Uploaded ${filenames.length} file(s): ${filenames.join(', ')}`,
+      time: new Date().toLocaleTimeString()
+    };
+    setActivities(prev => [newActivity, ...prev].slice(0, 10));
+  };
+
+  const handleUploadError = (error) => {
+    const newActivity = {
+      id: Date.now(),
+      icon: '❌',
+      message: `Upload failed: ${error}`,
+      time: new Date().toLocaleTimeString()
+    };
+    setActivities(prev => [newActivity, ...prev].slice(0, 10));
+  };
+
+  const handleDeleteFile = async () => {
+    if (!selectedFile) return;
+    
+    if (!window.confirm(`Are you sure you want to delete ${selectedFile.label}?`)) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`http://localhost:8000/delete-file/${encodeURIComponent(selectedFile.path)}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        const newActivity = {
+          id: Date.now(),
+          icon: '🗑️',
+          message: `Deleted ${selectedFile.label}`,
+          time: new Date().toLocaleTimeString()
+        };
+        setActivities(prev => [newActivity, ...prev].slice(0, 10));
+        setSelectedFile(null);
+      } else {
+        const error = await response.json();
+        alert(`Failed to delete: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      alert('Failed to delete file');
+    }
+  };
+
+  const handleRenameFile = async () => {
+    if (!selectedFile) return;
+    
+    const newName = window.prompt(`Rename "${selectedFile.label}" to:`, selectedFile.label);
+    
+    if (!newName || newName === selectedFile.label) {
+      return;
+    }
+    
+    try {
+      const response = await fetch('http://localhost:8000/rename-file', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          oldPath: selectedFile.path,
+          newName: newName
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        const newActivity = {
+          id: Date.now(),
+          icon: '✏️',
+          message: `Renamed ${selectedFile.label} to ${newName}`,
+          time: new Date().toLocaleTimeString()
+        };
+        setActivities(prev => [newActivity, ...prev].slice(0, 10));
+        setSelectedFile(null);
+      } else {
+        const error = await response.json();
+        alert(`Failed to rename: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to rename file:', error);
+      alert('Failed to rename file');
+    }
+  };
+
   return (
     <div className="App">
       <header className="app-header">
@@ -67,17 +160,23 @@ function App() {
           </div>
           <p className="tagline">Watch files organize themselves through semantic gravity</p>
         </div>
-        <button 
-          className="logs-toggle"
-          onClick={() => setShowLogs(!showLogs)}
-        >
-          {showLogs ? '📊 Hide Logs' : '📋 Show Logs'}
-        </button>
+        <div className="header-actions">
+          <FileUpload 
+            onUploadSuccess={handleUploadSuccess}
+            onUploadError={handleUploadError}
+          />
+          <button 
+            className="logs-toggle"
+            onClick={() => setShowLogs(!showLogs)}
+          >
+            {showLogs ? '📊 Hide Logs' : '📋 Show Logs'}
+          </button>
+        </div>
       </header>
 
       <div className="main-content">
         <div className="visualization-section">
-          <GravityView 
+          <ClusterBoxView 
             onActivityUpdate={handleActivityUpdate}
             onFileSelect={handleFileSelect}
           />
@@ -120,6 +219,12 @@ function App() {
                 <div className="metadata-actions">
                   <button className="metadata-button" onClick={handleOpenFile}>
                     📂 Open File
+                  </button>
+                  <button className="metadata-button metadata-button-secondary" onClick={handleRenameFile}>
+                    ✏️ Rename
+                  </button>
+                  <button className="metadata-button metadata-button-danger" onClick={handleDeleteFile}>
+                    🗑️ Delete
                   </button>
                 </div>
               </>

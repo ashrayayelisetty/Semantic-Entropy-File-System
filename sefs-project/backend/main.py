@@ -1,7 +1,7 @@
 """SEFS FastAPI Backend
 Main API server"""
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -167,7 +167,7 @@ def get_folders():
 
 @app.get("/graph")
 def get_graph_data():
-    """Get data for graph visualization with metadata"""
+    """Get cluster and file data for box visualization"""
     if not coordinator:
         return JSONResponse(
             status_code=503,
@@ -176,39 +176,42 @@ def get_graph_data():
     
     state = coordinator.get_current_state()
     
-    # Build nodes with metadata
-    nodes = []
+    # Build clusters and files data
+    clusters_dict = {}
+    files = []
     cluster_assignments = coordinator.semantic_engine.cluster_assignments
+    folder_to_cluster_id = {}  # Map folder names to unique cluster IDs
+    next_cluster_id = 0
     
     for file_path in state['files']:
-        # Determine cluster - either from assignments or from folder name
-        cluster_id = cluster_assignments.get(file_path, -1)
+        file_path_obj = Path(file_path)
+        parent_folder = file_path_obj.parent.name
         
-        # If not in assignments, try to determine from folder
-        if cluster_id == -1:
-            file_path_obj = Path(file_path)
-            parent_folder = file_path_obj.parent.name
-            
-            # Try to match folder name to cluster names
-            cluster_name = parent_folder if parent_folder != "sefs_root" else "Uncategorized"
-            
-            # Find cluster ID by name
-            for cid, cname in state['cluster_names'].items():
-                if cname == parent_folder:
-                    cluster_id = cid
-                    break
+        # Determine cluster based on folder
+        if parent_folder == "sefs_root":
+            # Files in root go to Uncategorized
+            cluster_key = "uncategorized"
+            cluster_name = "Uncategorized"
         else:
-            cluster_name = state['cluster_names'].get(cluster_id, "Uncategorized")
+            # Each folder gets its own cluster
+            if parent_folder not in folder_to_cluster_id:
+                folder_to_cluster_id[parent_folder] = str(next_cluster_id)
+                next_cluster_id += 1
+            cluster_key = folder_to_cluster_id[parent_folder]
+            cluster_name = parent_folder
         
-        # If still no cluster name, use folder name
-        if cluster_id == -1:
-            file_path_obj = Path(file_path)
-            parent_folder = file_path_obj.parent.name
-            cluster_name = parent_folder if parent_folder != "sefs_root" else "Uncategorized"
+        # Track cluster
+        if cluster_key not in clusters_dict:
+            clusters_dict[cluster_key] = {
+                "id": cluster_key,
+                "name": cluster_name,
+                "fileCount": 0
+            }
+        clusters_dict[cluster_key]["fileCount"] += 1
         
         # Get file metadata
         try:
-            file_stat = Path(file_path).stat()
+            file_stat = file_path_obj.stat()
             file_size = file_stat.st_size
             modified_time = file_stat.st_mtime
             
@@ -228,19 +231,20 @@ def get_graph_data():
             size_str = "Unknown"
             date_str = "Unknown"
         
-        nodes.append({
+        files.append({
             "id": file_path,
-            "label": Path(file_path).name,
-            "cluster": cluster_id,
+            "label": file_path_obj.name,
+            "cluster": cluster_key,
             "clusterName": cluster_name,
             "size": size_str,
             "modified": date_str,
-            "path": file_path,
-            "x": 0,
-            "y": 0
+            "path": file_path
         })
     
-    return {"nodes": nodes}
+    return {
+        "clusters": list(clusters_dict.values()),
+        "files": files
+    }
 
 
 @app.get("/state")
@@ -305,6 +309,208 @@ async def generate_names(background_tasks: BackgroundTasks):
         "message": "Names are generated automatically during reorganization",
         "cluster_names": coordinator.cluster_names
     }
+
+
+@app.post("/upload-file")
+async def upload_file(file: UploadFile = File(...)):
+    """Upload a file to sefs_root directory
+    
+    Args:
+        file: Uploaded file from multipart/form-data
+    
+    Returns:
+        JSON response with status, filename, and path
+    """
+    if not coordinator:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "System not initialized"}
+        )
+    
+    try:
+        # Validate file exists
+        if not file or not file.filename:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No file provided"}
+            )
+        
+        # Generate safe filename
+        original_filename = file.filename
+        safe_filename = Path(original_filename).name  # Remove any path components
+        
+        # Handle duplicate filenames
+        target_path = ROOT_DIR / safe_filename
+        counter = 1
+        while target_path.exists():
+            stem = Path(safe_filename).stem
+            suffix = Path(safe_filename).suffix
+            safe_filename = f"{stem}_{counter}{suffix}"
+            target_path = ROOT_DIR / safe_filename
+            counter += 1
+        
+        # Save file
+        content = await file.read()
+        with open(target_path, 'wb') as f:
+            f.write(content)
+        
+        logger.info(f"File uploaded: {safe_filename}")
+        
+        return {
+            "status": "success",
+            "filename": original_filename,
+            "path": str(target_path)
+        }
+    
+    except Exception as e:
+        logger.error(f"Error uploading file: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to upload file: {str(e)}"}
+        )
+
+
+@app.delete("/delete-file/{file_path:path}")
+def delete_file(file_path: str):
+    """Delete a file from the system"""
+    if not coordinator:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "System not initialized"}
+        )
+    
+    try:
+        # Resolve current path
+        current_path = coordinator.state_manager.resolve_current_path(file_path)
+        
+        if not current_path:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "File not found"}
+            )
+        
+        file_obj = Path(current_path)
+        
+        # Security check - ensure file is within sefs_root
+        root_path = Path(ROOT_DIR).resolve()
+        try:
+            file_resolved = file_obj.resolve()
+            if not str(file_resolved).startswith(str(root_path)):
+                return JSONResponse(
+                    status_code=403,
+                    content={"error": "Access denied"}
+                )
+        except Exception:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "File not found"}
+            )
+        
+        # Get parent folder before deleting
+        parent_folder = file_obj.parent
+        
+        # Delete the file
+        if file_obj.exists():
+            file_obj.unlink()
+            logger.info(f"File deleted: {file_obj.name}")
+            
+            # Check if parent folder is now empty and delete it
+            if parent_folder != root_path and parent_folder.exists():
+                # Check if folder is empty (no files, only possibly .gitkeep or hidden files)
+                remaining_files = [f for f in parent_folder.iterdir() if not f.name.startswith('.')]
+                if len(remaining_files) == 0:
+                    try:
+                        parent_folder.rmdir()
+                        logger.info(f"Deleted empty folder: {parent_folder.name}")
+                    except Exception as e:
+                        logger.warning(f"Could not delete folder {parent_folder.name}: {e}")
+            
+            return {"status": "success", "message": f"Deleted {file_obj.name}"}
+        else:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "File not found"}
+            )
+    
+    except Exception as e:
+        logger.error(f"Error deleting file: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to delete file: {str(e)}"}
+        )
+
+
+@app.post("/rename-file")
+async def rename_file(data: dict):
+    """Rename a file"""
+    if not coordinator:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "System not initialized"}
+        )
+    
+    try:
+        old_path = data.get("oldPath")
+        new_name = data.get("newName")
+        
+        if not old_path or not new_name:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Missing oldPath or newName"}
+            )
+        
+        # Resolve current path
+        current_path = coordinator.state_manager.resolve_current_path(old_path)
+        
+        if not current_path:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "File not found"}
+            )
+        
+        old_file = Path(current_path)
+        
+        # Security check
+        root_path = Path(ROOT_DIR).resolve()
+        try:
+            old_resolved = old_file.resolve()
+            if not str(old_resolved).startswith(str(root_path)):
+                return JSONResponse(
+                    status_code=403,
+                    content={"error": "Access denied"}
+                )
+        except Exception:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "File not found"}
+            )
+        
+        # Create new path in same directory
+        new_file = old_file.parent / new_name
+        
+        # Check if new name already exists
+        if new_file.exists():
+            return JSONResponse(
+                status_code=400,
+                content={"error": "A file with that name already exists"}
+            )
+        
+        # Rename the file
+        old_file.rename(new_file)
+        logger.info(f"File renamed: {old_file.name} -> {new_name}")
+        
+        return {
+            "status": "success",
+            "message": f"Renamed to {new_name}",
+            "newPath": str(new_file)
+        }
+    
+    except Exception as e:
+        logger.error(f"Error renaming file: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to rename file: {str(e)}"}
+        )
 
 
 @app.get("/open-file/{file_path:path}")
