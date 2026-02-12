@@ -122,7 +122,7 @@ GEMINI_API_KEY=your_gemini_api_key_here
 MODEL_NAME=gemini/gemini-1.5-flash
 ```
 
-**For detailed Gemini setup instructions, see [GEMINI_SETUP.md](GEMINI_SETUP.md)**
+**For detailed Gemini setup instructions, see [GEMINI_SETUP.md](sefs-project/GEMINI_SETUP.md)**
 
 #### Option B: Using OpenAI
 
@@ -161,7 +161,7 @@ The scripts will:
 2. Start the frontend development server on port 3000
 3. Automatically open your browser to http://localhost:3000
 
-For detailed startup instructions, see [STARTUP_GUIDE.md](STARTUP_GUIDE.md).
+For detailed startup instructions, see [STARTUP_GUIDE.md](sefs-project/STARTUP_GUIDE.md).
 
 ### Manual Startup
 
@@ -261,7 +261,7 @@ This creates 9 sample files:
 - Show the OS folders to demonstrate real integration
 - Add a new file live to show real-time capabilities
 
-For a complete demo script with timing and talking points, see [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
+For a complete demo script with timing and talking points, see [DEMO_SCRIPT.md](sefs-project/DEMO_SCRIPT.md).
 
 ---
 
@@ -460,7 +460,7 @@ Tests the complete workflow:
 
 If you encounter issues not covered here:
 1. Check the logs: `backend/backend.log` and `frontend/sefs-ui/frontend.log`
-2. Review the [STARTUP_GUIDE.md](STARTUP_GUIDE.md) for detailed setup instructions
+2. Review the [STARTUP_GUIDE.md](sefs-project/STARTUP_GUIDE.md) for detailed setup instructions
 3. Verify all prerequisites are installed correctly
 4. Try the manual startup method to isolate issues
 5. Check the API documentation at http://localhost:8000/docs
@@ -602,9 +602,9 @@ Potential improvements for future versions:
 
 ## 📚 Additional Documentation
 
-- **[GEMINI_SETUP.md](GEMINI_SETUP.md)** - Complete guide for setting up free Gemini AI naming
-- **[STARTUP_GUIDE.md](STARTUP_GUIDE.md)** - Detailed startup instructions and troubleshooting
-- **[DEMO_SCRIPT.md](DEMO_SCRIPT.md)** - Complete demo guide with timing and talking points
+- **[GEMINI_SETUP.md](sefs-project/GEMINI_SETUP.md)** - Complete guide for setting up free Gemini AI naming
+- **[STARTUP_GUIDE.md](sefs-project/STARTUP_GUIDE.md)** - Detailed startup instructions and troubleshooting
+- **[DEMO_SCRIPT.md](sefs-project/DEMO_SCRIPT.md)** - Complete demo guide with timing and talking points
 - **API Documentation** - Interactive docs at http://localhost:8000/docs (when running)
 
 ---
