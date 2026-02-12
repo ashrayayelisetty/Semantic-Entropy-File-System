@@ -29,6 +29,7 @@ ROOT_DIR.mkdir(exist_ok=True)
 # Global coordinator
 coordinator = None
 active_websockets = []
+pending_files = []  # Files awaiting user confirmation
 
 
 @asynccontextmanager
@@ -38,7 +39,14 @@ async def lifespan(app: FastAPI):
     
     # Startup
     logger.info("Starting SEFS system")
-    coordinator = SEFSCoordinator(str(ROOT_DIR))
+    
+    # Define callback for pending files
+    def on_pending_files(files):
+        global pending_files
+        pending_files.extend(files)
+        logger.info(f"Added {len(files)} files to pending list")
+    
+    coordinator = SEFSCoordinator(str(ROOT_DIR), pending_callback=on_pending_files)
     coordinator.start()
     
     # Start background processing
@@ -511,6 +519,130 @@ async def rename_file(data: dict):
             status_code=500,
             content={"error": f"Failed to rename file: {str(e)}"}
         )
+
+
+@app.get("/search")
+def search_files(q: str = ""):
+    """Search files by name and content"""
+    if not coordinator:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "System not initialized"}
+        )
+    
+    if not q or len(q) < 2:
+        return {"results": []}
+    
+    try:
+        results = []
+        query = q.lower()
+        state = coordinator.get_current_state()
+        
+        for file_path in state['files']:
+            file_obj = Path(file_path)
+            file_name = file_obj.name.lower()
+            
+            # Search by filename
+            name_match = query in file_name
+            content_match = False
+            matched_content = ""
+            
+            # Search by content (only for text files)
+            if file_obj.suffix.lower() == '.txt':
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                        if query in content.lower():
+                            content_match = True
+                            # Get snippet around match
+                            idx = content.lower().find(query)
+                            start = max(0, idx - 50)
+                            end = min(len(content), idx + len(query) + 50)
+                            matched_content = "..." + content[start:end] + "..."
+                except Exception:
+                    pass
+            
+            if name_match or content_match:
+                # Get file metadata
+                try:
+                    file_stat = file_obj.stat()
+                    file_size = file_stat.st_size
+                    if file_size < 1024:
+                        size_str = f"{file_size} B"
+                    elif file_size < 1024 * 1024:
+                        size_str = f"{file_size / 1024:.1f} KB"
+                    else:
+                        size_str = f"{file_size / (1024 * 1024):.1f} MB"
+                except Exception:
+                    size_str = "Unknown"
+                
+                # Determine cluster
+                parent_folder = file_obj.parent.name
+                cluster_name = parent_folder if parent_folder != "sefs_root" else "Uncategorized"
+                
+                results.append({
+                    "path": file_path,
+                    "name": file_obj.name,
+                    "cluster": cluster_name,
+                    "size": size_str,
+                    "matchType": "name" if name_match else "content",
+                    "snippet": matched_content if content_match else ""
+                })
+        
+        return {"results": results, "count": len(results)}
+    
+    except Exception as e:
+        logger.error(f"Error searching files: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Search failed: {str(e)}"}
+        )
+
+
+@app.get("/pending-files")
+def get_pending_files():
+    """Get list of files awaiting user confirmation"""
+    global pending_files
+    return {"pending": pending_files, "count": len(pending_files)}
+
+
+@app.post("/process-pending")
+async def process_pending_files(background_tasks: BackgroundTasks):
+    """Process pending files after user confirmation"""
+    global pending_files
+    
+    if not coordinator:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "System not initialized"}
+        )
+    
+    if not pending_files:
+        return {"status": "no pending files"}
+    
+    # Process all pending files
+    files_to_process = pending_files.copy()
+    pending_files.clear()
+    
+    for file_info in files_to_process:
+        coordinator._process_file(file_info['path'])
+    
+    # Trigger reorganization
+    background_tasks.add_task(coordinator._reorganize)
+    
+    return {
+        "status": "processing",
+        "count": len(files_to_process)
+    }
+
+
+@app.post("/dismiss-pending")
+def dismiss_pending_files():
+    """Dismiss pending files without processing"""
+    global pending_files
+    count = len(pending_files)
+    pending_files.clear()
+    return {"status": "dismissed", "count": count}
 
 
 @app.get("/open-file/{file_path:path}")

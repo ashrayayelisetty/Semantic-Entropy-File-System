@@ -17,9 +17,15 @@ logger = logging.getLogger(__name__)
 class SEFSCoordinator:
     """Main system coordinator"""
     
-    def __init__(self, root_path):
-        """Initialize all components"""
+    def __init__(self, root_path, pending_callback=None):
+        """Initialize all components
+        
+        Args:
+            root_path: Root directory path
+            pending_callback: Callback function to notify about pending files
+        """
         self.root = Path(root_path)
+        self.pending_callback = pending_callback
         
         # Initialize components
         self.watcher = FileWatcher(root_path)
@@ -131,16 +137,34 @@ class SEFSCoordinator:
         if not events:
             return False
         
+        # Collect new files for user confirmation
+        new_files = []
+        
         for event_type, file_path in events:
-            if event_type in ['created', 'modified']:
+            if event_type == 'created':
+                # Add to pending list instead of processing immediately
+                file_name = Path(file_path).name
+                new_files.append({
+                    'path': file_path,
+                    'name': file_name
+                })
+                logger.info(f"New file detected: {file_name}")
+            elif event_type == 'modified':
+                # Modified files are processed immediately
                 self._process_file(file_path)
             elif event_type == 'deleted':
                 self.semantic_engine.remove_file(file_path)
         
-        # Reorganize after processing events
-        self._reorganize()
+        # Notify about new files via callback
+        if new_files and self.pending_callback:
+            self.pending_callback(new_files)
         
-        return True
+        # Only reorganize if we processed modifications or deletions
+        if any(e[0] in ['modified', 'deleted'] for e in events):
+            self._reorganize()
+            return True
+        
+        return len(new_files) > 0
     
     def get_current_state(self):
         """Get current system state - includes all files (root and organized)"""

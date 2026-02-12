@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import ClusterBoxView from './ClusterBoxView';
 import FileUpload from './FileUpload';
+import SearchBar from './SearchBar';
 import ActivityFeed from './ActivityFeed';
+import FileDetectionPopup from './FileDetectionPopup';
 import './App.css';
 
 function App() {
@@ -9,6 +11,7 @@ function App() {
   const [logs, setLogs] = useState('');
   const [activities, setActivities] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [pendingFiles, setPendingFiles] = useState([]);
 
   // Fetch logs periodically
   useEffect(() => {
@@ -28,6 +31,24 @@ function App() {
       return () => clearInterval(interval);
     }
   }, [showLogs]);
+
+  // Check for pending files periodically
+  useEffect(() => {
+    const checkPendingFiles = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/pending-files');
+        const data = await response.json();
+        if (data.pending && data.pending.length > 0) {
+          setPendingFiles(data.pending);
+        }
+      } catch (error) {
+        console.error('Failed to check pending files:', error);
+      }
+    };
+
+    const interval = setInterval(checkPendingFiles, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleActivityUpdate = (newActivities) => {
     setActivities(newActivities);
@@ -150,8 +171,46 @@ function App() {
     }
   };
 
+  const handleConfirmPending = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/process-pending', {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        const newActivity = {
+          id: Date.now(),
+          icon: '⚙️',
+          message: `Processing ${pendingFiles.length} new file(s)`,
+          time: new Date().toLocaleTimeString()
+        };
+        setActivities(prev => [newActivity, ...prev].slice(0, 10));
+        setPendingFiles([]);
+      }
+    } catch (error) {
+      console.error('Failed to process pending files:', error);
+    }
+  };
+
+  const handleDismissPending = async () => {
+    try {
+      await fetch('http://localhost:8000/dismiss-pending', {
+        method: 'POST'
+      });
+      setPendingFiles([]);
+    } catch (error) {
+      console.error('Failed to dismiss pending files:', error);
+    }
+  };
+
   return (
     <div className="App">
+      <FileDetectionPopup 
+        pendingFiles={pendingFiles}
+        onConfirm={handleConfirmPending}
+        onDismiss={handleDismissPending}
+      />
+      
       <header className="app-header">
         <div className="header-content">
           <div className="logo-section">
@@ -161,6 +220,7 @@ function App() {
           <p className="tagline">Watch files organize themselves through semantic gravity</p>
         </div>
         <div className="header-actions">
+          <SearchBar onFileSelect={handleFileSelect} />
           <FileUpload 
             onUploadSuccess={handleUploadSuccess}
             onUploadError={handleUploadError}
