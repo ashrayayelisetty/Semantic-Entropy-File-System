@@ -51,7 +51,7 @@ class FileWatcher:
     def start(self):
         """Start monitoring the directory"""
         handler = SEFSEventHandler(self.queue)
-        self.observer.schedule(handler, str(self.root), recursive=False)
+        self.observer.schedule(handler, str(self.root), recursive=True)
         self.observer.start()
         self.running = True
         logger.info(f"[MONITOR] Watching directory: {self.root}")
@@ -76,7 +76,7 @@ class FileWatcher:
     def get_all_files(self):
         """Get all supported files in the root directory"""
         files = []
-        for file_path in self.root.iterdir():
+        for file_path in self.root.rglob('*'):
             if file_path.is_file() and file_path.suffix.lower() in {'.pdf', '.txt'}:
                 files.append(str(file_path))
         return files
